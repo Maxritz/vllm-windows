@@ -68,9 +68,8 @@ if /i not "!BUILD_ROCM_OPS_DLL: =!"=="1" goto :skip_d017
 echo [D017] BUILD_ROCM_OPS_DLL=1 - building rocm_ops.dll (HIP-clang host TU, GNU-ldd link)
 echo [D017] TORCH_INC=%TORCH_INC%  TORCH_LIB=%TORCH_LIB%  ROCM_HOME=%ROCM_HOME%
 if not defined PY_INC      set "PY_INC=C:/Python314/Include"
+if not defined PY_LIB      set "PY_LIB=C:/Python314/libs"
 set CL=%CLANG% -c -x c++ -std=c++20 -m64 -DNDEBUG -I%SRC% -Icsrc -Isrc\engine\include -I"%PROJECT_ROOT%" -DUSE_ROCM -DC10_CUDA_NO_CMAKE_CONFIGURE_FILE -DC10_STATIC_DEFINE -D__HIP_PLATFORM_AMD__=1 -fms-extensions -fms-compatibility -isystem "csrc/hip_wrap" -isystem "%TORCH_INC%" -isystem "%TORCH_INC%\torch\csrc\api\include" -isystem "%ROCM_HOME%\include" -isystem "%PY_INC%" -D__NO_MATH_DEFINES=1
-REM D017.3: link with MSVC-triple clang++ object files.  clang++ link syntax, not link.exe.
-set LINK=link /nologo /DLL /OUT:"%OBJ%\rocm_ops.dll" /LIBPATH:"%TORCH_LIB%" /LIBPATH:"%ROCM_HOME%\lib" /MACHINE:X64
 echo [D017.1] device kernel (hipcc -c, gfx1201, D016 scalar WMMA fallback)
 %ROCM_HOME%\bin\hipcc --offload-arch=gfx1201 --rocm-device-lib-path="%ROCM_HOME%\lib/llvm/amdgcn/bitcode" --target=x86_64-pc-windows-gnu -std=c++17 -D__NO_MATH_DEFINES=1 -DUSE_ROCM=1 -D__HIP_PLATFORM_AMD__=1 -D_MSC_VER=1900 -D_NATIVE_WCHAR_T_DEFINED=1 -D_WCHAR_T_DEFINED -fshort-wchar -c csrc\rocm\attention_gfx1201.cu -o "%OBJ%\attention_gfx1201.obj" 2>&1
 if errorlevel 1 (echo DLL KERNEL COMPILE FAILED& exit /b 1)
@@ -86,10 +85,10 @@ set LLD_LINK=%ROCM_HOME%\lib\llvm\bin\lld-link.exe
 if not exist "%LLD_LINK%" set "LLD_LINK=lld-link.exe"
 echo [D017.3] %LLD_LINK% /DLL ...
 "%LLD_LINK%" /nologo /DLL /OUT:"%OBJ%\rocm_ops.dll" /MACHINE:X64 ^
-  /LIBPATH:"%TORCH_LIB%" /LIBPATH:"%ROCM_HOME%\lib" ^
+  /LIBPATH:"%TORCH_LIB%" /LIBPATH:"%ROCM_HOME%\lib" /LIBPATH:"%PY_LIB%" ^
   "%OBJ%\attention_gfx1201.obj" "%OBJ%\torch_bindings.obj" "%OBJ%\paged_attention_bridge.obj" ^
   c10_hip.lib torch_hip.lib c10.lib torch_cpu.lib amdhip64.lib ^
-  "%MINGW_ROOT%\libstdc++.a" 2>&1
+  2>&1
 if errorlevel 1 (echo DLL LINK FAILED& exit /b 1)
 echo rocm_ops.dll -^> "%OBJ%\rocm_ops.dll" (C-ABI paged_attention_rocm exported)
 :skip_d017
