@@ -1,0 +1,10 @@
+# Windows ROCm workspace artifacts
+/build-host/
+/obj/
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.exp
+!csrc/rocm/ops.h
