@@ -69,7 +69,7 @@ echo [D017] BUILD_ROCM_OPS_DLL=1 - building rocm_ops.dll (HIP-clang host TU, GNU
 echo [D017] TORCH_INC=%TORCH_INC%  TORCH_LIB=%TORCH_LIB%  ROCM_HOME=%ROCM_HOME%
 if not defined PY_INC      set "PY_INC=C:/Python314/Include"
 if not defined PY_LIB      set "PY_LIB=C:/Python314/libs"
-set CL=%CLANG% -c -x c++ -std=c++20 -m64 -DNDEBUG -I%SRC% -Icsrc -Isrc\engine\include -I"%PROJECT_ROOT%" -DUSE_ROCM -DC10_CUDA_NO_CMAKE_CONFIGURE_FILE -DC10_STATIC_DEFINE -D__HIP_PLATFORM_AMD__=1 -fms-extensions -fms-compatibility -isystem "csrc/hip_wrap" -isystem "%TORCH_INC%" -isystem "%TORCH_INC%\torch\csrc\api\include" -isystem "%ROCM_HOME%\include" -isystem "%PY_INC%" -D__NO_MATH_DEFINES=1
+set CL=%CLANG% -c -x c++ -std=c++20 -m64 -DNDEBUG -I%SRC% -Icsrc -Isrc\engine\include -I"%PROJECT_ROOT%" -DUSE_ROCM -DC10_CUDA_NO_CMAKE_CONFIGURE_FILE -DC10_BUILD_SHARED_LIBS -D__HIP_PLATFORM_AMD__=1 -fms-extensions -fms-compatibility -isystem "csrc/hip_wrap" -isystem "%TORCH_INC%" -isystem "%TORCH_INC%\torch\csrc\api\include" -isystem "%ROCM_HOME%\include" -isystem "%PY_INC%" -D__NO_MATH_DEFINES=1
 echo [D017.1] device kernel (hipcc -c, gfx1201, D016 scalar WMMA fallback)
 %ROCM_HOME%\bin\hipcc --offload-arch=gfx1201 --rocm-device-lib-path="%ROCM_HOME%\lib/llvm/amdgcn/bitcode" --target=x86_64-pc-windows-gnu -std=c++17 -D__NO_MATH_DEFINES=1 -DUSE_ROCM=1 -D__HIP_PLATFORM_AMD__=1 -D_MSC_VER=1900 -D_NATIVE_WCHAR_T_DEFINED=1 -D_WCHAR_T_DEFINED -fshort-wchar -c csrc\rocm\attention_gfx1201.cu -o "%OBJ%\attention_gfx1201.obj" 2>&1
 if errorlevel 1 (echo DLL KERNEL COMPILE FAILED& exit /b 1)
