@@ -12,6 +12,7 @@
 #include <c10/core/DeviceType.h>
 #include <c10/core/ScalarType.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <c10/cuda/CUDAFunctions.h>
 #include <c10/util/optional.h>
 #include <cstring>
 #include <string>
@@ -21,14 +22,13 @@
 namespace {
 at::Tensor wrap(void* p, at::ScalarType st, int64_t n) {
     auto opts = at::TensorOptions(st).device(c10::kHIP);
-    return at::from_blob(p, c10::IntArrayRef({n}), c10::IntArrayRef({sizeof(void*)==8?0:0}),
-                         opts, /*deleter=*/nullptr);
+    return at::from_blob(p, {n}, {}, /*deleter=*/nullptr, opts);
 }
 at::Tensor wrap2(void* p, at::ScalarType st, int64_t d0, int64_t d1) {
     auto opts = at::TensorOptions(st).device(c10::kHIP);
     int64_t stride1 = 1;
     int64_t stride0 = d1;
-    return at::from_blob(p, {d0, d1}, {stride0, stride1}, opts, /*deleter=*/nullptr);
+    return at::from_blob(p, {d0, d1}, {stride0, stride1}, /*deleter=*/nullptr, opts);
 }
 }  // namespace
 
@@ -46,8 +46,9 @@ __declspec(dllexport) int paged_attention_rocm(
     int64_t num_tokens, int64_t num_heads, int64_t head_size,
     int64_t max_num_partition) {
   try {
-    const at::cuda::OptionalCUDAGuard device_guard(query);
-    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    const c10::DeviceIndex device_idx = 0;
+    const at::cuda::OptionalCUDAGuard device_guard(device_idx);
+    const hipStream_t stream = at::cuda::getCurrentCUDAStream(device_idx);
     (void)stream;
 
     int64_t nh = num_heads;
@@ -76,12 +77,12 @@ __declspec(dllexport) int paged_attention_rocm(
     std::optional<at::Tensor> opt_fp8 = fp8_out_scale
         ? std::optional<at::Tensor>(wrap(fp8_out_scale, at::ScalarType::Float, 1))
         : std::nullopt;
-    auto t_kscale = (k_scale && k_scale != reinterpret_cast<void*>(&scale))
-        ? at::from_blob(k_scale, {1}, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP), nullptr)
-        : at::from_blob(const_cast<double*>(&scale), {1}, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP), nullptr);
+auto t_kscale = (k_scale && k_scale != reinterpret_cast<void*>(&scale))
+        ? at::from_blob(k_scale, {1}, {}, /*deleter=*/nullptr, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP))
+        : at::from_blob(const_cast<double*>(&scale), {1}, {}, /*deleter=*/nullptr, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP));
     auto t_vscale = (v_scale && v_scale != reinterpret_cast<void*>(&scale))
-        ? at::from_blob(v_scale, {1}, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP), nullptr)
-        : at::from_blob(const_cast<double*>(&scale), {1}, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP), nullptr);
+        ? at::from_blob(v_scale, {1}, {}, /*deleter=*/nullptr, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP))
+        : at::from_blob(const_cast<double*>(&scale), {1}, {}, /*deleter=*/nullptr, at::TensorOptions(at::ScalarType::Float).device(c10::kHIP));
     (void)out_total; (void)nh; (void)nq; (void)hs;
 
     paged_attention(t_out, t_exp, t_max, t_tmp, t_q, t_k, t_v,
