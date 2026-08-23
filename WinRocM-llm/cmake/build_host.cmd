@@ -3,20 +3,32 @@ REM build_host.cmd — Phase 0.2+ host C++ build for WinRocM-llm (D012/D013).
 REM Hand-rolled clang++ invocation avoids CMake's Windows-Clang platform module
 REM (forces MSVC link semantics incompatible with GNU lld). ROCm bin on PATH so
 REM clang resolves GNU-mode ld.lld instead of MSVC lld-link.
+REM
+REM Portable: all external paths resolved from env vars with autodetect fallback.
+REM Override any of:  ROCM_HOME  TORCH_HOME  MINGW_ROOT  VS_LIB  PROJECT_ROOT
 setlocal enabledelayedexpansion
+REM [portability] machine-specific overrides live in gitignored local.env
+if exist "%PROJECT_ROOT%\local.env" call "%PROJECT_ROOT%\local.env"
+if exist "local.env" call local.env
 REM D017 defaults OFF; explicit unset guards against inherited envs (e.g. PS session).
 set "BUILD_ROCM_OPS_DLL="
-cd /d G:\vllm-windows
-set ROCM_HOME=G:\ROCM10RT-gfx1201
-set CLANG=%ROCM_HOME%\lib\llvm\bin\clang++.exe
-set MINGW_GCC=C:\Strawberry\c\lib\gcc\x86_64-w64-mingw32\13.2.0
-set MINGW_LIB=C:\Strawberry\c\x86_64-w64-mingw32\lib
-set MINGW_ROOT=C:\Strawberry\c\lib
-set MSVC_LIB=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\lib\x64
-REM ROCm 2.15 extracted libtorch headers + torch_hip/c10_hip import libs (param to env).
-set TORCH_ROOT=G:\ROCM-versions\common\cp312\.extracted-torch\torch
+
+REM --- portable path resolution (edit env vars, not this file) ---
+if not defined PROJECT_ROOT  set "PROJECT_ROOT=%~dp0..\.."
+pushd "%PROJECT_ROOT%" >nul 2>&1 && cd /d "%PROJECT_ROOT%" || (echo "set PROJECT_ROOT" & exit /b 1)
+
+if not defined ROCM_HOME    set "ROCM_HOME=G:\ROCM10RT-gfx1201"
+if not defined TORCH_HOME   set "TORCH_ROOT=E:\ROCM-versions\common\cp312\win_torch\torch"
+if not defined TORCH_ROOT   set "TORCH_ROOT=%TORCH_HOME%\torch"
 set TORCH_INC=%TORCH_ROOT%\include
 set TORCH_LIB=%TORCH_ROOT%\lib
+if not defined MINGW_GCC    set "MINGW_GCC=C:\Strawberry\c\lib\gcc\x86_64-w64-mingw32\13.2.0"
+if not defined MINGW_LIB    set "MINGW_LIB=C:\Strawberry\c\x86_64-w64-mingw32\lib"
+if not defined MINGW_ROOT   set "MINGW_ROOT=C:\Strawberry\c\lib"
+if not defined VS_LIB       set "MSVC_LIB=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\lib\x64"
+if defined   VS_LIB         set "MSVC_LIB=%VS_LIB%"
+
+set CLANG=%ROCM_HOME%\lib\llvm\bin\clang++.exe
 set SRC=WinRocM-llm\src
 set OBJ=WinRocM-llm\build-host\obj
 REM Prepend ROCM bin so clang resolves GNU-mode ld.lld (not MSVC lld-link).
@@ -47,7 +59,7 @@ REM === D017: rocm_ops.dll — MSVC pass (torch headers + device kernel link). =
 REM OFF by default (BUILD_ROCM_OPS_DLL=1 to enable).  The device kernel
 REM builds via hipcc (D016 scalar-WMMA fallback for gfx1201); the torch
 REM extension host TU (torch_bindings.cpp + paged_attention_bridge.cpp) is
-REM compiled via cl.exe with the cuda_runtime.h shim (csrc/hip_wrap/) so
+REM compiled via HIP-clang MSVC-triple with the cuda_runtime.h shim (csrc/hip_wrap/) so
 REM torch's <c10/cuda/*> resolve to stubs instead of HIP's GNU-attribute
 REM headers that cl.exe cannot parse.  Set once the ROCm-on-Windows torch
 REM toolchain is configured (see decisions D017/D018).
@@ -57,21 +69,22 @@ echo [D017] BUILD_ROCM_OPS_DLL set — building rocm_ops.dll
 echo [D017] locating vcvarsall...
 for /f "usebackq tokens=*" %%V in (`"%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VC.Tools.x86.x64 -property installationPath`) do set "VSINST=%%V"
 call ""!VSINST!\VC\Auxiliary\Build\vcvarsall.bat"" x64
-set CL=/nologo /std:c++20 /O2 /EHsc /wd4819 /I"%TORCH_INC%" /IC:\vllm-windows /Icsrc /Isrc\engine\include /DUSE_ROCM /DC10_CUDA_NO_CMAKE_CONFIGURE_FILE /DC10_STATIC_DEFINE /I"%ROCM_HOME%\include" /D__HIP_PLATFORM_AMD__=1
-set LINK=/nologo /DLL /OUT:"%OBJ%\rocm_ops.dll" /LIBPATH:"%TORCH_LIB%" /LIBPATH:"%ROCM_HOME%\lib"
+set CLANG=%ROCM_HOME%\lib\llvm\bin\clang++.exe
+set CL=%CLANG% -c -x c++ -std=c++20 -m64 -DNDEBUG -I%SRC% -Icsrc -Isrc\engine\include -I"C:\vllm-windows" -DUSE_ROCM -DC10_CUDA_NO_CMAKE_CONFIGURE_FILE -DC10_STATIC_DEFINE -D__HIP_PLATFORM_AMD__=1 -isystem "csrc/hip_wrap" -isystem "%TORCH_INC%" -isystem "%ROCM_HOME%\include" -D__NO_MATH_DEFINES=1
+set LINK=%CLANG% -shared -m64 -fuse-ld=lld -nodefaultlibs /OUT:"%OBJ%\rocm_ops.dll" -L"%TORCH_LIB%" -L"%ROCM_HOME%\lib" -lstdc++
 echo [D017.1] device kernel (hipcc -c, gfx1201, D016 scalar WMMA fallback)
-%ROCM_HOME%\bin\hipcc --offload-arch=gfx1201 --rocm-device-lib-path="%ROCM_HOME%\lib\llvm\amdgcn/bitcode" --target=x86_64-pc-windows-gnu -std=c++17 -D__NO_MATH_DEFINES=1 -DUSE_ROCM=1 -D__HIP_PLATFORM_AMD__=1 -D_MSC_VER=1900 -D_NATIVE_WCHAR_T_DEFINED=1 -D_WCHAR_T_DEFINED -fshort-wchar -c csrc\rocm\attention_gfx1201.cu -o "%OBJ%\attention_gfx1201.obj" 2>&1
+%CLANG% --offload-arch=gfx1201 --rocm-device-lib-path="%ROCM_HOME%\lib/llvm/amdgcn/bitcode" --target=x86_64-pc-windows-msvc -std=c++17 -D__NO_MATH_DEFINES=1 -DUSE_ROCM=1 -D__HIP_PLATFORM_AMD__=1 -c csrc\rocm\attention_gfx1201.cu -o "%OBJ%\attention_gfx1201.obj" 2>&1
 if errorlevel 1 (echo DLL KERNEL COMPILE FAILED& exit /b 1)
-echo [D017.2] torch bindings + C-ABI bridge (cl.exe /c)
-cl %CL% /c csrc\rocm\torch_bindings.cpp /Fo"%OBJ%\" 2>&1
-cl %CL% /c csrc\rocm\paged_attention_bridge.cpp /Fo"%OBJ%\" 2>&1
+echo [D017.2] torch bindings + C-ABI bridge (HIP-clang MSVC-triple, cl.exe avoided)
+%CLANG% %CL% /c csrc\rocm\torch_bindings.cpp /Fo"%OBJ%\" 2>&1
+%CLANG% %CL% /c csrc\rocm\paged_attention_bridge.cpp /Fo"%OBJ%\" 2>&1
 if errorlevel 1 (echo DLL HOST COMPILE FAILED& exit /b 1)
-echo [D017.3] link rocm_ops.dll
-link %LINK% "%OBJ%\attention_gfx1201.obj" "%OBJ%\torch_bindings.obj" "%OBJ%\paged_attention_bridge.obj" c10_hip.lib torch_hip.lib c10.lib torch_cpu.lib amdhip64.lib 2>&1
+echo [D017.3] link rocm_ops.dll (MSVC-triple clang++ objects)
+%CLANG% %LINK% "%OBJ%\attention_gfx1201.obj" "%OBJ%\torch_bindings.obj" "%OBJ%\paged_attention_bridge.obj" -lc10_hip -ltorch_hip -lc10 -ltorch_cpu -lamdhip64 2>&1
 if errorlevel 1 (echo DLL LINK FAILED& exit /b 1)
 echo rocm_ops.dll -^> "%OBJ%\rocm_ops.dll" (C-ABI paged_attention_rocm exported)
 :skip_d017
-if /i not "!BUILD_ROCM_OPS_DLL!"=="1" echo [D017] skipped (BUILD_ROCM_OPS_DLL unset); engine --attention throws runtime_error fail-closed (rocm_ops.dll not built; see D018)
+if /i not "!BUILD_ROCM_OPS_DLL!"=="1" echo [D017] skipped (BUILD_ROCM_OPS_DLL unset); engine --attention throws runtime_error fail-closed (rocm_ops.dll not built; see D018). Enable with: set BUILD_ROCM_OPS_DLL=1 && cmake\build_host.cmd (clang++ MSVC-triple host TU)
 
 echo Linking vllm_engine.exe (GNU ld.lld + MinGW runtime + amdhip64.lib)
 %CLANG% --target=x86_64-pc-windows-gnu -fuse-ld=lld -nodefaultlibs ^

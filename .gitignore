@@ -1,10 +1,22 @@
-# Windows ROCm workspace artifacts
-/build-host/
-/obj/
+# Build artifacts
+build-host/
+obj/
 *.o
 *.obj
 *.exe
 *.dll
 *.lib
 *.exp
-!csrc/rocm/ops.h
+*.pdb
+
+# Environment-specific overrides (do NOT commit)
+local.env
+settings.local.cmake
+
+# Editor / OS
+.vs/
+*.vcxproj*
+*.sln
+*.user
+.DS_Store
+Thumbs.db

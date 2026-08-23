@@ -96,6 +96,13 @@ typedef hipHostFn_t cudaHostFn_t;
 #define cudaGraphDestroy               hipGraphDestroy
 #define cudaUserObjectNoDestructorSync hipUserObjectNoDestructorSync
 #define cudaGraphUserObjectMove        hipGraphUserObjectMove
+#define cudaStreamGetCaptureInfo_v2     hipStreamGetCaptureInfo_v2
+#define cudaMemGetInfo                  hipMemGetInfo
+#define cudaEventDefault                hipEventDefault
+#define cudaEventElapsedTime            hipEventElapsedTime
+#define cudaErrorNotReady               hipErrorNotReady
+#define cudaStreamCaptureStatusInvalidated hipStreamCaptureStatusInvalidated
+typedef hipUserObject_t cudaUserObject_t;
 #define cudaGraphAddChild              hipGraphAddChild
 #define cudaGraphInstantiateWithFlags  hipGraphInstantiateWithFlags
 #define cudaGraphInstantiateWithParams hipGraphInstantiateWithParams

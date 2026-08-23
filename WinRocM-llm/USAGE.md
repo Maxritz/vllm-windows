@@ -39,13 +39,26 @@ The path to `torch/include/` becomes `TORCH_INC` in the build script.
 
 ## 3. Configure build paths
 
-Edit the three variables at the top of
-[`cmake/build_host.cmd`](WinRocM-llm/cmake/build_host.cmd):
+All paths in [`cmake/build_host.cmd`](WinRocM-llm/cmake/build_host.cmd) are
+resolved from **environment variables** (it hardcodes nothing). Edit or override
+any of:
+
+| Variable | Default (on this machine) | Meaning |
+|---|---|---|
+| `PROJECT_ROOT` | auto (repo root) | where `vllm_engine.exe` is emitted |
+| `ROCM_HOME` | `G:\ROCM10RT-gfx1201` | HIP/Clang toolchain root |
+| `TORCH_HOME` / `TORCH_ROOT` | `G:\ROCM-versions\common\cp312\win_torch\torch` (the extracted Windows-native ROCm torch wheel) | libtorch headers + `c10_hip`/`torch_hip` import libs |
+| `MINGW_ROOT` / `MINGW_LIB` / `MINGW_GCC` | `C:\Strawberry\...` | MinGW-w64 runtime + libstdc++ |
+| `VS_LIB` (aliased to `MSVC_LIB`) | VS 2026 `lib\x64` path | MSVC C runtime libs for GNU-ldd link |
+
+For portability across machines, put overrides in a **gitignored** `local.env`
+(supported by the build script) instead of editing `build_host.cmd`:
 
 ```bat
-set "ROCM_HOME=G:\ROCM10RT-gfx1201"
-set "TORCH_INC=<your-python>/Lib/site-packages/torch/include"
-set "MODEL_DIR=<your-checkpoint>"     (optional, only for full --run)
+:: local.env  (NOT committed — add your paths here)
+set ROCM_HOME=D:\rocm
+set TORCH_HOME=D:\torch-wheels\torch-2.15+rocm
+set MINGW_ROOT=D:\Strawberry\c\lib
 ```
 
 ## 4. Build
